@@ -1,0 +1,33 @@
+{{ define "add" }}
+    {{ template "header" "/res/css/add.css" }}
+            <form method="POST" action="/add">
+                <input type="text" name="source" placeholder="Источник">
+                <textarea name="text" placeholder="Текст"></textarea>
+                <input type="submit" value="Добавить в индекс">
+            </form>
+
+            <input type="button" value="Вернуться к поиску" onclick="location.href='/main'" />
+
+            {{ if . }}
+                <div id="modal">
+                    <div class="modal-content">
+                        <div class="header">
+                            {{ if .IsAdded }}
+                                <h2>Успех</h2>
+                            {{ else }}
+                                <h2>Фиаско</h2>
+                            {{ end }}
+                        </div>
+                        <div class="copy">
+                            <p>{{ .Message }}</p>
+                        </div>
+                        <div class="cf footer">
+                            <a href="#modal" class="btn">Закрыть</a>
+                        </div>
+                    </div>
+                    <div class="overlay"></div>
+                </div>
+            {{ end }}
+
+    {{ template "footer" }}
+{{ end }}

@@ -1,0 +1,11 @@
+{{ define "header" }}
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <link rel="icon" href="/res/icons/favicon.ico" type="image/x-icon"/ >
+        {{ if . }}
+            <link rel="stylesheet" href={{ . }}>
+        {{ end }}
+    </head>
+    <body>
+{{ end }}

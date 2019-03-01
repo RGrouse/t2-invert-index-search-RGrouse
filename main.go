@@ -1,60 +1,112 @@
 package main
 
 import (
-	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/invertedindex"
 	"bufio"
-	"fmt"
+	"github.com/go-pg/pg"
+	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/config"
+	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/controller"
+	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/model/db_model"
+	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/model/interfaces"
+	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/model/map_model"
+	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/view"
+	"github.com/polis-mail-ru-golang-1/t2-invert-index-search-RGrouse/web"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"io/ioutil"
 	"os"
-	"sort"
+	"sync"
 )
 
 func main() {
-	searchingfolder := os.Args[1] 	//"./search"
-	filenames := os.Args[2:]		//[]string{"ex1.txt", "ex2.txt", "ex3.txt", "ex4.txt"}
+	cfg, err := config.Load()
+	die(err)
 
-	for _, filename := range filenames {
-		words, err := wordsInFile(searchingfolder+"/"+filename)
-		check(err)
-		invertedindex.AttachWordsListToGlobalMap(filename, words)
+	level, err := zerolog.ParseLevel(cfg.LogLevel)
+	die(err)
+	zerolog.MessageFieldName = "msg"
+	log.Level(level)
+
+	log.Print(cfg)
+
+	var m interfaces.InvertedIndexModel
+
+	switch cfg.ModelType {
+	case "MAP":
+		m = map_model.New()
+	case "DB":
+		pgOpt, err := pg.ParseURL(cfg.PgSQL)
+		die(err)
+		pgdb := pg.Connect(pgOpt)
+		m = db_model.New(pgdb)
+	default:
+		panic("Неправильный параметр MODEL")
 	}
 
-	scanner := bufio.NewScanner(os.Stdin)
+	indexFilesInFolder(cfg.SearchingFolder, m)
 
-	fmt.Print("Поисковая фраза: ")
-	for scanner.Scan() {
-		str := scanner.Text()
+	v, err := view.New()
+	die(err)
 
-		resultmap := invertedindex.SearchByString(str)
-		if len(resultmap)>0 {
-			sortAndPrintResultMap(resultmap)
-		}
+	c := controller.New(v, m)
 
-		fmt.Print("\nПоисковая фраза: ")
-	}
-	check(scanner.Err())
+	webServer := web.New(cfg.Listen, c)
+	die(webServer.Start())
 }
 
-func check(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
+func indexFilesInFolder(searchingfolder string, iim interfaces.InvertedIndexModel) {
+	log.Info().Msg("Индексируем файлы из директории "+searchingfolder)
 
-func sortAndPrintResultMap(m map[string]int) {
-	n := map[int][]string{}
-	var a []int
-	for k, v := range m {
-		n[v] = append(n[v], k)
+	filesInfos, err := ioutil.ReadDir(searchingfolder)
+	die(err)
+
+	type fileWordsEntry struct {
+		Source string
+		CountedWords map[string]int
 	}
-	for k := range n {
-		a = append(a, k)
-	}
-	sort.Sort(sort.Reverse(sort.IntSlice(a)))
-	for _, k := range a {
-		for _, s := range n[k] {
-			fmt.Printf("- %s; совпадений - %d\n", s, k)
+
+	var filesCountInFolder int
+	for _, fileInfo := range filesInfos {
+		if (!fileInfo.IsDir()) {
+			filesCountInFolder++
 		}
 	}
+
+	ch := make(chan fileWordsEntry, filesCountInFolder)
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go func() {
+		for i:=0; i< filesCountInFolder; i++ {
+			fileWordsEntry := <-ch
+			err := iim.AttachWeightedWords(fileWordsEntry.Source, fileWordsEntry.CountedWords) //слушаем канал и добавляем в общий индекс посчитанные слова
+			if(err!=nil) {
+				log.Error().Msgf("Ошибка при добавлении слов в индекс %v", err)
+				return
+			}
+		}
+		wg.Done()
+	}()
+
+	for _, fileInfo := range filesInfos {
+		wg.Add(1)
+
+		go func(f os.FileInfo) {
+			defer wg.Done()
+
+			if (!f.IsDir()) {
+				words, err := wordsInFile(searchingfolder + "/" + f.Name()) //разбиваем файл по словам
+				if(err!=nil) {
+					log.Error().Msgf("Ошибка при обработке файла %v", err)
+					return
+				}
+				weighted := interfaces.CountWords(words)      //считаем, сколько раз слово появилось в файле
+
+				ch <- fileWordsEntry{f.Name(), weighted} //пишем в канал источник и карту посчитанных слов
+			}
+		}(fileInfo)
+	}
+	wg.Wait()	//ждем пока все файлы проиндексируются
+	log.Info().Msg("Закончили индексирование")
 }
 
 func wordsInFile(path string) ([]string, error) {
@@ -68,13 +120,21 @@ func wordsInFile(path string) ([]string, error) {
 
 	scanner := bufio.NewScanner(file)
 
-	scanner.Split(bufio.ScanWords)
-
-	words := make([]string, 0)
-
+	words := []string{}
 	for scanner.Scan() {
-		words = append(words, scanner.Text())
+		cleanedWords := interfaces.WordsInString(scanner.Text())
+		words = append(words, cleanedWords...)
+	}
+
+	for i, _ := range words {
+		words[i]=interfaces.StemWord(words[i])
 	}
 
 	return words, nil
+}
+
+func die(err error) {
+	if err != nil {
+		panic(err)
+	}
 }

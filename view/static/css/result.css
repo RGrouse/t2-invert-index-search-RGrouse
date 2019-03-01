@@ -1,0 +1,39 @@
+input[type=submit],input[type=button] {
+    width: 10%;
+    margin-right: 0.25%;
+    margin-left: 0.25%;
+    float:left;
+    height: 52px;
+    box-sizing: border-box;
+    border: 2px solid #ccc;
+    border-radius: 4px;
+    font-size: 16px;
+    padding: 16px;
+    background-color: #4CAF50;
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+}
+input[type=text] {
+    width: 79%;
+    height: 52px;
+    box-sizing: border-box;
+    border: 2px solid #ccc;
+    border-radius: 4px;
+    font-size: 16px;
+    background-color: white;
+    background-image: url('/res/icons/search.png');
+    background-size: 32px;
+    background-position: 8px 8px;
+    background-repeat: no-repeat;
+    padding: 16px 16px 16px 48px;
+    -webkit-transition: width 0.4s ease-in-out;
+    transition: width 0.4s ease-in-out;
+    float:left;
+}
+.header {
+    height: 52px;
+}
+.content {
+    padding: 8px 0px 0px 16px;
+}

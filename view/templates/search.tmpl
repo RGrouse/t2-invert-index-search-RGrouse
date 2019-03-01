@@ -1,0 +1,7 @@
+{{ define "search" }}
+    {{ template "header" "/res/css/search.css" }}
+        <form action="/search">
+            <input type="text" name="q" placeholder="Search..">
+        </form>
+    {{ template "footer" }}
+{{ end }}
